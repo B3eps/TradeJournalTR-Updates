@@ -107,7 +107,7 @@ var require_main = __commonJS({
     var fs9 = require("fs");
     var path10 = require("path");
     var os = require("os");
-    var crypto9 = require("crypto");
+    var crypto10 = require("crypto");
     var packageJson = require_package();
     var version3 = packageJson.version;
     var TIPS = [
@@ -361,7 +361,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto9.createDecipheriv("aes-256-gcm", key2, nonce);
+        const aesgcm = crypto10.createDecipheriv("aes-256-gcm", key2, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error62) {
@@ -30664,6 +30664,35 @@ function getItemWithEvaluation(id) {
   const row = getNewsItem(getDb(), id);
   return row ? rowToItem(row, scanEvaluations()) : null;
 }
+function getNextMetalEvaluation(excludedIds = []) {
+  const excluded = new Set(excludedIds.filter((id) => /^[0-9a-f]{16}$/.test(id)));
+  const cutoff = Date.now() - 24 * 60 * 60 * 1e3;
+  const candidates = pendingRows();
+  for (const row of candidates) {
+    if (excluded.has(row.id) || Date.parse(row.first_seen_at) < cutoff) continue;
+    const values = [row.instruments, row.tags, row.title, row.summary].join(" ").toLocaleLowerCase("en-US");
+    if (!/(?:\bxau\b|\bxag\b|\bgold\b|\bsilver\b|\bprecious metals?\b)/i.test(values)) continue;
+    const item = rowToItem(row, scanEvaluations());
+    return { id: row.id, prompt: buildMetalPrompt(item) };
+  }
+  return null;
+}
+function getMetalEvaluationPrompt(id) {
+  if (!/^[0-9a-f]{16}$/.test(id)) return null;
+  const item = getItemWithEvaluation(id);
+  if (!item || item.evaluation) return null;
+  const values = [...item.instruments, ...item.tags, item.title, item.summary].join(" ").toLocaleLowerCase("en-US");
+  if (!/(?:\bxau\b|\bxag\b|\bgold\b|\bsilver\b|\bprecious metals?\b)/i.test(values)) return null;
+  return buildMetalPrompt(item);
+}
+function buildMetalPrompt(item) {
+  return [
+    "Bu haber i\xE7in k\u0131sa, anla\u015F\u0131l\u0131r ve arkada\u015F\xE7a T\xFCrk\xE7e bir piyasa \xF6zeti haz\u0131rla. Ba\u015Fl\u0131\u011F\u0131 da do\u011Fal T\xFCrk\xE7eye \xE7evir.",
+    "\xD6zellikle alt\u0131n (XAU) ve g\xFCm\xFC\u015F (XAG) etkisini ayr\u0131 ayr\u0131 de\u011Ferlendir. Haber bunlarla ilgili de\u011Filse ili\u015Fki uydurma; yaln\u0131z kan\u0131tlanan ba\u011Flant\u0131y\u0131 ve belirsizli\u011Fi yaz.",
+    "Yaln\u0131zca JSON d\xF6nd\xFCr; al/sat, i\u015Flem a\xE7/kapat, fiyat seviyesi, lot veya pozisyon \xF6nerisi verme. Haberde olmayan bilgiyi uydurma.",
+    buildAskPrompt(item)
+  ].join("\n\n");
+}
 function getRecentMetalEvaluations(since, limit = 3) {
   try {
     const evals = scanEvaluations();
@@ -30764,6 +30793,46 @@ newsfeed.post("/api/newsfeed/evaluation/:id", requiresLogin, async (c) => {
   return c.json({ evaluation });
 });
 var newsfeed_default = newsfeed;
+
+// server/src/routes/internal-chatgpt.ts
+var import_node_crypto4 = __toESM(require("node:crypto"));
+var internalChatGpt = new Hono3();
+internalChatGpt.use("/internal/newsfeed/*", async (c, next) => {
+  const expected = process.env.TRADE_GUNLUGU_BOOT_TOKEN || "";
+  const supplied = c.req.header("x-trade-gunlugu-boot-token") || "";
+  const expectedBytes = Buffer.from(expected);
+  const suppliedBytes = Buffer.from(supplied);
+  if (!expected || suppliedBytes.length !== expectedBytes.length || !import_node_crypto4.default.timingSafeEqual(suppliedBytes, expectedBytes)) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  return next();
+});
+internalChatGpt.get("/internal/newsfeed/next-metal", (c) => {
+  const excluded = (c.req.query("exclude") || "").split(",").slice(0, 50);
+  return c.json({ candidate: getNextMetalEvaluation(excluded) });
+});
+internalChatGpt.get("/internal/newsfeed/prompt/:id", (c) => {
+  const prompt = getMetalEvaluationPrompt(c.req.param("id"));
+  return prompt ? c.json({ prompt }) : c.json({ error: "not_found_or_not_metal_news" }, 404);
+});
+internalChatGpt.post("/internal/newsfeed/evaluation/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^[0-9a-f]{16}$/.test(id)) return c.json({ error: "invalid_id" }, 400);
+  const text = await c.req.text();
+  if (text.length > 256 * 1024) return c.json({ error: "payload_too_large" }, 413);
+  const item = getItemWithEvaluation(id);
+  if (!item) return c.json({ error: "not_found" }, 404);
+  if (item.evaluation) return c.json({ error: "already_evaluated" }, 409);
+  let raw2;
+  try {
+    raw2 = JSON.parse(text);
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+  const evaluation = saveEvaluation(id, raw2);
+  return evaluation ? c.json({ evaluation }) : c.json({ error: "invalid_evaluation" }, 400);
+});
+var internal_chatgpt_default = internalChatGpt;
 
 // server/src/services/timetrack/launcher.ts
 var import_node_fs5 = __toESM(require("node:fs"));
@@ -38354,7 +38423,7 @@ var finance_default = finance;
 // server/src/services/backup/index.ts
 var import_node_fs6 = __toESM(require("node:fs"));
 var import_node_path7 = __toESM(require("node:path"));
-var import_node_crypto4 = __toESM(require("node:crypto"));
+var import_node_crypto5 = __toESM(require("node:crypto"));
 var import_better_sqlite32 = __toESM(require("better-sqlite3"));
 var BACKUP_KEY = "backup";
 var BACKUP_ROOT = import_node_path7.default.resolve(process.env.BACKUP_DIR || import_node_path7.default.join(import_node_path7.default.resolve(DATA_DIR), "..", "yedekler"));
@@ -38400,7 +38469,7 @@ function listBackups() {
     return [];
   }
   const out = [];
-  const currentKeyFingerprint = import_node_crypto4.default.createHash("sha256").update(getEnv().ENCRYPTION_KEY).digest("hex");
+  const currentKeyFingerprint = import_node_crypto5.default.createHash("sha256").update(getEnv().ENCRYPTION_KEY).digest("hex");
   for (const name of names) {
     const dir = import_node_path7.default.join(BACKUP_ROOT, name);
     try {
@@ -38502,7 +38571,7 @@ async function doBackup(opts) {
     const screenshotCount = copyFlatFiles(SCREENSHOTS_DIR, import_node_path7.default.join(tmpDir, "screenshots"));
     const captureScreenshotCount = copyFlatFiles(CAPTURE_SCREENSHOTS_DIR, import_node_path7.default.join(tmpDir, "ekran-goruntuleri"));
     const evaluationCount = copyFlatFiles(import_node_path7.default.join(DATA_DIR, "news-eval"), import_node_path7.default.join(tmpDir, "news-eval"));
-    const keyFingerprint = import_node_crypto4.default.createHash("sha256").update(getEnv().ENCRYPTION_KEY).digest("hex");
+    const keyFingerprint = import_node_crypto5.default.createHash("sha256").update(getEnv().ENCRYPTION_KEY).digest("hex");
     const counts = {};
     const copy = new import_better_sqlite32.default(import_node_path7.default.join(tmpDir, dbFile), { readonly: true, fileMustExist: true });
     try {
@@ -38854,62 +38923,7 @@ function sampleNewsItem() {
 }
 var AUTO_TICK_MS = 60 * 1e3;
 var AUTO_MAX_AGE_MS = 6 * 60 * 60 * 1e3;
-var AUTO_MAX_ATTEMPTS = 3;
 var AUTO_RETRY_DELAYS_MS = [5 * 60 * 1e3, 20 * 60 * 1e3];
-var attempts = /* @__PURE__ */ new Map();
-var autoTimer2 = null;
-var autoRunning = false;
-function rememberAutoAttempt(id, state2) {
-  attempts.delete(id);
-  attempts.set(id, state2);
-  if (attempts.size > 2e3) attempts.delete(attempts.keys().next().value);
-}
-async function autoSummarizeTick() {
-  if (autoRunning || aiBusy()) return null;
-  autoRunning = true;
-  let activeId = null;
-  try {
-    const conf = listSettingsByKey(AI_KEY).map((r3) => ({ ...AI_DEFAULTS, ...r3.value || {} })).find((s) => s.enabled && s.autoSummarize);
-    if (!conf) return null;
-    const cutoff = Date.now() - AUTO_MAX_AGE_MS;
-    const now = Date.now();
-    const next = listQueueCandidates(getDb(), 2, 30).find((r3) => {
-      const previous = attempts.get(r3.id);
-      return Date.parse(r3.first_seen_at) >= cutoff && !hasEvaluation(r3.id) && (!previous || previous.count < AUTO_MAX_ATTEMPTS && previous.retryAt <= now);
-    });
-    if (!next) return null;
-    if (usedThisHour() >= conf.maxPerHour) return null;
-    activeId = next.id;
-    const count = (attempts.get(next.id)?.count || 0) + 1;
-    rememberAutoAttempt(next.id, { count, retryAt: Number.POSITIVE_INFINITY });
-    await summarizeNews(conf, next.id);
-    attempts.delete(next.id);
-    return next.id;
-  } catch (err) {
-    if (activeId) {
-      const state2 = attempts.get(activeId);
-      if (state2) {
-        const delay = AUTO_RETRY_DELAYS_MS[state2.count - 1];
-        rememberAutoAttempt(activeId, {
-          count: state2.count,
-          retryAt: state2.count < AUTO_MAX_ATTEMPTS && delay ? Date.now() + delay : Number.POSITIVE_INFINITY
-        });
-      }
-    }
-    console.warn("[Ollama] auto summary failed:", err?.message || err);
-    return null;
-  } finally {
-    autoRunning = false;
-  }
-}
-function startAiQueue() {
-  if (autoTimer2) return;
-  autoTimer2 = setInterval(() => {
-    autoSummarizeTick().catch(() => {
-    });
-  }, AUTO_TICK_MS);
-  autoTimer2.unref();
-}
 
 // server/src/routes/integrations.ts
 function fail(c, err, tag2) {
@@ -39193,7 +39207,7 @@ function upsertMap(db2, row) {
 }
 
 // server/src/services/google/oauth.ts
-var import_node_crypto5 = __toESM(require("node:crypto"));
+var import_node_crypto6 = __toESM(require("node:crypto"));
 
 // server/src/services/google/http.ts
 var GoogleError = class extends Error {
@@ -39291,8 +39305,8 @@ var STATE_TTL_MS = 10 * 60 * 1e3;
 var pending = /* @__PURE__ */ new Map();
 var b64url = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 function createPkce() {
-  const verifier = b64url(import_node_crypto5.default.randomBytes(48));
-  const challenge = b64url(import_node_crypto5.default.createHash("sha256").update(verifier).digest());
+  const verifier = b64url(import_node_crypto6.default.randomBytes(48));
+  const challenge = b64url(import_node_crypto6.default.createHash("sha256").update(verifier).digest());
   return { verifier, challenge };
 }
 function resolvePort(hostHeader) {
@@ -39312,7 +39326,7 @@ function prunePending() {
 }
 function buildAuthUrl(userId, clientId, redirectUri) {
   prunePending();
-  const state2 = b64url(import_node_crypto5.default.randomBytes(24));
+  const state2 = b64url(import_node_crypto6.default.randomBytes(24));
   const { verifier, challenge } = createPkce();
   pending.set(state2, { userId, verifier, redirectUri, expiresAt: Date.now() + STATE_TTL_MS });
   const params = new URLSearchParams({
@@ -39439,7 +39453,7 @@ async function disconnect(db2, userId) {
 }
 
 // server/src/services/google/sync.ts
-var import_node_crypto6 = __toESM(require("node:crypto"));
+var import_node_crypto7 = __toESM(require("node:crypto"));
 var CLASSROOM = "https://classroom.googleapis.com/v1";
 var MAX_PAGES = 10;
 var MAX_COURSEWORK_PAGES = 4;
@@ -39497,7 +39511,7 @@ function addUrlLink(db2, userId, taskId, url2, label) {
   } catch {
   }
 }
-var hash2 = (v) => import_node_crypto6.default.createHash("sha1").update(JSON.stringify(v)).digest("hex");
+var hash2 = (v) => import_node_crypto7.default.createHash("sha1").update(JSON.stringify(v)).digest("hex");
 var running = /* @__PURE__ */ new Map();
 function syncClassroom(db2, userId) {
   const inflight4 = running.get(userId);
@@ -40415,7 +40429,12 @@ app.use("/api/*", async (c, next) => {
   return bodyLimit({ maxSize, onError: tooLarge })(c, next);
 });
 app.use("*", authMiddleware);
-app.get("/api/health", (c) => c.json({ status: "ok", bootToken: process.env.TRADE_GUNLUGU_BOOT_TOKEN || null }));
+app.get("/api/health", (c) => {
+  const expected = process.env.TRADE_GUNLUGU_BOOT_TOKEN || "";
+  const supplied = c.req.header("x-trade-gunlugu-boot-token") || "";
+  if (expected && supplied !== expected) return c.json({ error: "forbidden" }, 403);
+  return c.json({ status: "ok" });
+});
 app.route("/", uploads_default);
 app.route("/", account_default);
 app.route("/", trade_default);
@@ -40431,6 +40450,7 @@ app.route("/", robinhood_default);
 app.route("/", webull_default);
 app.route("/", news_default);
 app.route("/", newsfeed_default);
+app.route("/", internal_chatgpt_default);
 app.route("/", timetrack_default);
 app.route("/", tasks_default);
 app.route("/", projects_default);
@@ -40686,8 +40706,7 @@ function startIntegrations() {
   started2 = true;
   for (const [name, fn] of [
     ["reminders", startReminders],
-    ["auto-backup", startAutoBackup],
-    ["ai-queue", startAiQueue]
+    ["auto-backup", startAutoBackup]
   ]) {
     try {
       fn();
