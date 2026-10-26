@@ -9752,7 +9752,7 @@ function parseFeed(xml) {
 }
 
 // server/src/services/newsfeed/sources.ts
-var NEWS_CATEGORIES = ["forex", "nasdaq", "crypto"];
+var NEWS_CATEGORIES = ["forex", "nasdaq", "crypto", "metals"];
 function userAgent() {
   const contact = process.env.NEWS_FEED_CONTACT || "tradegunlugu-local@example.invalid";
   return `TradeGunlugu-NewsFeed/1.0 (personal trading journal; ${contact})`;
@@ -9828,6 +9828,9 @@ var NEWS_SOURCES = [
   { id: "investinglive", name: "investingLive (ForexLive)", category: "forex", url: "https://investinglive.com/feed/news", parser: rss },
   { id: "fed", name: "Federal Reserve", category: "forex", url: "https://www.federalreserve.gov/feeds/press_all.xml", parser: rss },
   { id: "ecb", name: "ECB", category: "forex", url: "https://www.ecb.europa.eu/rss/press.html", parser: rss },
+  { id: "bls-cpi", name: "U.S. Bureau of Labor Statistics \xB7 CPI", category: "forex", url: "https://www.bls.gov/feed/cpi.rss", parser: rss },
+  { id: "bea", name: "U.S. Bureau of Economic Analysis", category: "forex", url: "https://apps.bea.gov/rss/rss.xml", parser: rss },
+  { id: "cme-metals", name: "CME Group \xB7 Metals", category: "metals", url: "https://www.cmegroup.com/rss/metals-video-commentary.rss", parser: rss },
   { id: "cnbc", name: "CNBC", category: "nasdaq", url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", parser: rss },
   { id: "cnbc-tech", name: "CNBC Tech", category: "nasdaq", url: "https://www.cnbc.com/id/19854910/device/rss/rss.html", parser: rss },
   { id: "marketwatch", name: "MarketWatch", category: "nasdaq", url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", parser: rss },
@@ -10065,7 +10068,17 @@ function scoreItem(input2) {
     instruments.add(m[1]);
     instruments.add(m[2]);
   }
+  if (input2.category === "metals") {
+    instruments.add("XAU");
+    instruments.add("XAG");
+  }
+  if (instruments.has("XAU") || instruments.has("XAG")) importance = Math.max(2, importance);
   if (tags.has("RATES") && instruments.has("USD") && /\b(fed|fomc|federal reserve)\b/i.test(title)) tags.add("FOMC");
+  const metalRelevantTags = ["RATES", "CPI", "NFP", "GDP", "PPI", "JOBS", "PMI", "GEOPOLITICS", "TARIFF", "SANCTIONS"];
+  if (importance >= 2 && (instruments.has("USD") || metalRelevantTags.some((tag2) => tags.has(tag2)))) {
+    instruments.add("XAU");
+    instruments.add("XAG");
+  }
   return { importance, tags: [...tags].slice(0, 8), instruments: [...instruments].slice(0, 10) };
 }
 
@@ -29801,6 +29814,7 @@ var EVALUATION_SAFETY_RULE_TR = [
 var EVALUATION_SCHEMA_TR = `{
   "id": "<haberin 16 karakterlik hex id'si>",
   "evaluatedAt": "<ISO 8601 zaman damgas\u0131>",
+  "turkce_baslik": "<haberin k\u0131sa ve do\u011Fal T\xFCrk\xE7e ba\u015Fl\u0131\u011F\u0131>",
   "ozet": "<1-2 c\xFCmlelik T\xFCrk\xE7e \xF6zet, en fazla 400 karakter>",
   "onem": <1-5 aras\u0131 tam say\u0131; 5 = piyasa i\xE7in \xE7ok kritik>,
   "etkilenen": [
@@ -29849,7 +29863,8 @@ function buildAskPrompt(item, now = /* @__PURE__ */ new Date()) {
     weekday: "long"
   }).format(now);
   return [
-    "Sen bir piyasa haberi analistisin. A\u015Fa\u011F\u0131daki tek haberi forex, Nasdaq ve kripto piyasalar\u0131 a\xE7\u0131s\u0131ndan de\u011Ferlendir.",
+    "Sen piyasa haberlerini T\xFCrk\xE7e anlatan dikkatli bir analistsin. Haber ba\u015Fl\u0131\u011F\u0131n\u0131 do\u011Fal T\xFCrk\xE7eye \xE7evir; k\u0131sa, arkada\u015F\xE7a ve anla\u015F\u0131l\u0131r yaz, sansasyon ekleme.",
+    "\xD6zellikle XAU (alt\u0131n) ve XAG (g\xFCm\xFC\u015F) etkisini ayr\u0131 ayr\u0131 de\u011Ferlendir. Her ikisi i\xE7in de haber ger\xE7ekten ilgili de\u011Filse etkilenen listesine ekleme; ilgiliyse y\xF6n\xFC, gerek\xE7eyi ve belirsizli\u011Fi belirt. USD, faiz, enflasyon, tahvil getirileri ve jeopolitik kanallar\u0131 ancak haber destekliyorsa kullan.",
     `Bug\xFCn\xFCn tarihi: ${today} (Europe/Istanbul). \u015Eu anki zaman: ${now.toISOString()}.`,
     "",
     "## Haber",
@@ -29899,6 +29914,7 @@ var SEVIYE_VALUES = ["d\xFC\u015F\xFCk", "orta", "y\xFCksek"];
 var evaluationInputSchema = external_exports.object({
   id: external_exports.string().regex(/^[0-9a-f]{16}$/),
   evaluatedAt: external_exports.string().refine((value) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value))),
+  turkce_baslik: external_exports.string().optional(),
   ozet: external_exports.string().min(1),
   onem: external_exports.number().int().min(1).max(5),
   etkilenen: external_exports.array(external_exports.object({
@@ -29942,6 +29958,7 @@ function sanitizeEvaluation(raw2, id, fallbackDate) {
   const ev = {
     id,
     evaluatedAt: new Date(Number.isFinite(evaluatedAtRaw) ? evaluatedAtRaw : fallbackDate.getTime()).toISOString(),
+    turkce_baslik: str(r3.turkce_baslik, 240),
     ozet: str(r3.ozet, 400),
     onem: Number.isFinite(onemNum) ? Math.min(5, Math.max(1, Math.round(onemNum))) : 3,
     etkilenen: arr(r3.etkilenen).filter((e) => !!e && typeof e === "object").map((e) => ({
@@ -30258,7 +30275,7 @@ async function sendTest(userId) {
 function enabledNtfyUsers() {
   return listSettingsByKey(NTFY_KEY).map((r3) => ({ userId: r3.userId, settings: withDefaults(r3.value) })).filter((r3) => r3.settings.enabled && !!r3.settings.topic);
 }
-var CATEGORY_TR = { forex: "Forex", nasdaq: "Nasdaq", crypto: "Kripto" };
+var CATEGORY_TR = { forex: "Forex", nasdaq: "Nasdaq", crypto: "Kripto", metals: "De\u011Ferli metaller" };
 var newsSentAt = /* @__PURE__ */ new Map();
 async function pushNews(item) {
   if (!item || typeof item.id !== "string" || typeof item.title !== "string") return;
@@ -30294,6 +30311,19 @@ function notifyCriticalNews(item) {
   } catch (err) {
     console.warn("[ntfy] news push error:", err?.message || err);
   }
+}
+function notifyCriticalEvaluation(item) {
+  const metals = item.instruments.filter((x) => x === "XAU" || x === "XAG");
+  if (!metals.length) return;
+  const impacts = item.evaluation.etkilenen.filter((x) => metals.includes(x.enstruman));
+  const impactText = impacts.length ? impacts.map((x) => `${x.enstruman}: ${x.etki} \u2014 ${x.neden}`).join("\n") : `${metals.join("/")} i\xE7in do\u011Frudan etki net de\u011Fil.`;
+  notifyCriticalNews({
+    ...item,
+    title: `${item.evaluation.turkce_baslik || item.title}
+${item.evaluation.ozet}
+${impactText}`.slice(0, 1200),
+    category: "metals"
+  });
 }
 
 // server/src/services/newsfeed/index.ts
@@ -30402,6 +30432,7 @@ async function pollSource(src, counts) {
       }
       if (items.length) upsertNewsItems(getDb(), items);
       for (const it of fresh) {
+        if (it.instruments.includes("XAU") || it.instruments.includes("XAG")) continue;
         try {
           notifyCriticalNews(it);
         } catch {
@@ -30542,6 +30573,21 @@ function saveEvaluation(id, raw2) {
   evalCache.delete(id);
   lastEvalScan = 0;
   scanEvaluations(true);
+  try {
+    const instruments = safeJsonArray(item.instruments);
+    notifyCriticalEvaluation({
+      id,
+      source: item.source,
+      category: item.category,
+      title: item.title,
+      importance: item.importance,
+      url: item.url,
+      publishedAt: item.published_at,
+      instruments,
+      evaluation
+    });
+  } catch {
+  }
   return evaluation;
 }
 function writeQueue() {
@@ -30617,6 +30663,14 @@ async function forceRefresh() {
 function getItemWithEvaluation(id) {
   const row = getNewsItem(getDb(), id);
   return row ? rowToItem(row, scanEvaluations()) : null;
+}
+function getRecentMetalEvaluations(since, limit = 3) {
+  try {
+    const evals = scanEvaluations();
+    return listNewsItems(getDb(), { minImportance: 1, limit: 300 }).map((row) => rowToItem(row, evals)).filter((item) => Date.parse(item.publishedAt) >= since.getTime()).filter((item) => item.evaluation && (item.instruments.includes("XAU") || item.instruments.includes("XAG"))).sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)).slice(0, Math.max(0, Math.min(5, limit)));
+  } catch {
+    return [];
+  }
 }
 function prune() {
   try {
@@ -38635,11 +38689,11 @@ async function chatOnce(s, messages, json2, think) {
     body: JSON.stringify(body)
   }, CHAT_TIMEOUT_MS);
 }
-async function chat(s, messages, json2) {
+async function chat(s, messages, json2, highReasoning = false) {
   return serialize(async () => {
     let res;
     try {
-      res = await chatOnce(s, messages, json2, false);
+      res = await chatOnce(s, messages, json2, !highReasoning);
       if (res.status === 400) {
         const txt = await res.text().catch(() => "");
         if (/think/i.test(txt)) res = await chatOnce(s, messages, json2, true);
@@ -38755,7 +38809,7 @@ async function summarizeNews(s, id, opts = {}) {
     tags: safeArr(row.tags),
     instruments: safeArr(row.instruments)
   });
-  const reply = await chat(s, [{ role: "system", content: system }, { role: "user", content: user }], true);
+  const reply = await chat(s, [{ role: "system", content: system }, { role: "user", content: user }], true, true);
   const ev = finalizeLocalEvaluation(parseModelJson(reply), id);
   if (!ev) throw new IntegrationError(502, "Model ge\xE7erli bir de\u011Ferlendirme JSON'u \xFCretmedi. Daha b\xFCy\xFCk bir model deneyin.");
   import_node_fs7.default.mkdirSync(NEWS_EVAL_DIR, { recursive: true });
@@ -38770,6 +38824,21 @@ async function summarizeNews(s, id, opts = {}) {
       import_node_fs7.default.unlinkSync(tmp);
     } catch {
     }
+  }
+  try {
+    const instruments = safeArr(row.instruments);
+    notifyCriticalEvaluation({
+      id: row.id,
+      source: row.source,
+      category: row.category,
+      title: row.title,
+      importance: row.importance,
+      url: row.url,
+      publishedAt: row.published_at,
+      instruments,
+      evaluation: ev
+    });
+  } catch {
   }
   return ev;
 }
@@ -40536,6 +40605,18 @@ async function buildDigest(userId, now) {
   ).all(userId, today);
   const lines = [`Bug\xFCn ${dueToday} g\xF6rev, gecikmi\u015F ${overdue} g\xF6rev.`];
   for (const t of top) lines.push(`\u2022 ${t.due_time ? t.due_time + " " : ""}${t.title.slice(0, 120)}`);
+  const metalNews = getRecentMetalEvaluations(new Date(now.getTime() - 24 * 60 * 60 * 1e3), 3);
+  if (metalNews.length) {
+    lines.push("", "Alt\u0131n & g\xFCm\xFC\u015Fte son 24 saat:");
+    for (const item of metalNews) {
+      const ev = item.evaluation;
+      const metals = item.instruments.filter((x) => x === "XAU" || x === "XAG").join("/");
+      const effects = ev.etkilenen.filter((x) => x.enstruman === "XAU" || x.enstruman === "XAG").map((x) => `${x.enstruman}: ${x.etki}`).join(", ");
+      lines.push(`\u2022 ${metals} \xB7 ${ev.turkce_baslik || item.title}: ${ev.ozet}${effects ? ` (${effects})` : ""}`.slice(0, 500));
+    }
+  } else {
+    lines.push("", "Alt\u0131n & g\xFCm\xFC\u015F i\xE7in de\u011Ferlendirilmi\u015F yeni haber yok.");
+  }
   const events = await upcomingHighImpact(now);
   if (events && events.length) {
     lines.push("", "Y\xFCksek etkili takvim:");
