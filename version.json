@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.26-204208",
+  "version": "2026.10.26-204521",
   "format": 2,
   "files": {
     "public/assets/app.css": "5228a44efb7a146e5cc4e3a5ad4fae739e6fbef76a1cdd42970e01f3449b34f9",
@@ -22,7 +22,7 @@
     "public/assets/img/myfundedfutures.png": "c4a61588590bfdc5e360f199cd99633a1ce00de451db49bd6ff7c7c0e361c0be",
     "public/assets/img/ninjatrader.jpeg": "78f1a07a1c43a12f3a026adae47b40d30fb4e8aeac8fdfe8331f80c9e2b0b991",
     "public/assets/img/og-image.png": "5707b7081ea5a1e0e1cef3ec241b51347ed7e9eeb8a6ddde5c99baad640d62a5",
-    "public/assets/img/pencil-edit-button.svg": "76a32edaf6c085f56228d60bf49660c2ececda0802f05ad4f511f5d61d1718ec",
+    "public/assets/img/pencil-edit-button.svg": "178d7e40ff24c59f9b4b628dd878b5fc940d72162fba7a13d1b6fa19785d1372",
     "public/assets/img/robinhood.png": "d10c6825f65551c16b77c16cf618be0b47b2c675dce104b522dedcbee6b8700f",
     "public/assets/img/robinhood.svg": "332e15f8cba8cda53ac4f15c9526285cad92cc9792773385e857cc25d343b9d6",
     "public/assets/img/toponefutures.png": "07ec36eebe06ce13ac87d6024989d41d788a961e676161b238e83381ea0bf76d",
@@ -31,13 +31,13 @@
     "public/assets/img/tradovate.png": "0ef7f56a06cab51bb49d67171d8db5e1efc3fdab69c438e3ef7f7bad3da598a7",
     "public/assets/img/trash.png": "6fea081fbf9d3fe91c7196e9fee0124f5bfaf1f79ebc14444c1a63a63dfa5b41",
     "public/assets/img/webull.png": "d10c6825f65551c16b77c16cf618be0b47b2c675dce104b522dedcbee6b8700f",
-    "public/assets/img/webull.svg": "c8b3f5fbc6b91900d045321791167ee8310d79dfefbea3ff042eb8b46d1e5d91",
-    "public/manifest.json": "552b3dda526ccaa810104b4f3fc73178bd0a05f593602a9593adfb9f663b1a78",
-    "public/robots.txt": "f025e7c6d4a8b9642cbc28852c20624fe1780b2b626b3dbc87ad7d943d3e3d21",
-    "public/sw.js": "69913728fa1210668a0936548168b54f17314fa145b6c5ced671e3011c179349",
+    "public/assets/img/webull.svg": "76aef79c88044cbadb9c9efa2e9962d0cae9832c4d6ab5711d7b0623bd953010",
+    "public/manifest.json": "5137184f86883bc192930ca20b572f9b58c432c9a6dc371e0dc6a46c9e84490e",
+    "public/robots.txt": "61e8d409047ef367986dd7a3090c654a4a9e99487f6e13448c53be2373b1ebd8",
+    "public/sw.js": "bb8029cd84d7ab77c285714e32521953e839aa2bf1e976cf9bc67aea3804aead",
     "public/theme-init.js": "faf6bb8175adfcc70500ba5171f0e9986c073a6853dfbc0b7873b62afe003e3c",
-    "public/trades.html": "432ebce953b447b9b637c21ce9cf1fae1b661b8e6727d944df3d3dcd6e8449e2",
-    "schema.sql": "d857e53d9233b30d532207e24092a6f29d42313a225ddf21f63b926a9f3367f1",
+    "public/trades.html": "895dcae4b51c5d2d44c1590991f98dd50f380a5f5e2d8a2bfdf5450b25c5e194",
+    "schema.sql": "e4c6097d361b42f4f5ad51b59badd15fe3f3268fa2e2c06287faad1903527428",
     "server.cjs": "a522141b10c9ed7604897edd58a4bee509ddfcba460aa22454d5e09edad0dbb1"
   }
 }
